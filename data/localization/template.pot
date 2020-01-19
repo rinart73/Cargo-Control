@@ -1,0 +1,81 @@
+# ========== data\scripts\entity\cargocontrol.lua ==========
+#: data\scripts\entity\cargocontrol.lua:
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "%1% rows were removed because they exceeded the limit of %2% rows per ruleset."
+msgstr ""
+
+#: data\scripts\entity\cargocontrol.lua:
+msgid "Applying ruleset to currently stored goods."
+msgstr ""
+
+
+# ========== data\scripts\player\ui\cargocontrol.lua ==========
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Cargo Control"
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Cargo Control"
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Clear"
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Force"
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Auto"
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Load ruleset"
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "The ruleset should have a name."
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Maximum amount of rules reached."
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Drop"
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Suspicious"
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Stolen"
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Dangerous"
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Illegal"
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Can't create new ruleset - reached the maximum amount of %1%."
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Apply this ruleset to goods that are currently stored in the cargo bay."
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "Automatically apply this ruleset when picking up goods."
+msgstr ""
+
+#: data\scripts\player\ui\cargocontrol.lua:
+msgid "This tab allows to create sets of rules that will determine what to do with cargo once it's picked up."
+msgstr ""
+
+
