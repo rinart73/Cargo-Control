@@ -41,7 +41,6 @@ function CargoControl.onCargoLootCollected(collector, lootIndex, amount, good, o
         local goodTypes = {"suspicious", "stolen", "dangerous", "illegal"}
         local goodIndex = goodIndexByName[good.name]
         for _, row in ipairs(data.current.rules) do
-            print("onCargoLootCollected", row.type, row.good, goodIndex)
             if (row.type == 0 or good[goodTypes[row.type]]) and (row.good == 0 or row.good == goodIndex) then
                 local entity = Entity()
                 entity:removeCargo(good, amount)
