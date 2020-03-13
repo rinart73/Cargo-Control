@@ -3,9 +3,8 @@ include("callable")
 include("faction")
 include("stringutility")
 include("goods")
-include("azimuthlib-uiproportionalsplitter")
 local Azimuth = include("azimuthlib-basic")
-local UICollection = include("azimuthlib-uicollection")
+local UICollection -- clientside
 local UTF8 = include("azimuthlib-utf8")
 
 -- namespace CargoControl
@@ -19,6 +18,9 @@ local Log, Config, data, rulesetByName -- server
 
 if onClient() then
 
+
+include("azimuthlib-uiproportionalsplitter")
+UICollection = include("azimuthlib-uicollection")
 
 rows = {}
 rowByEditBtn = {}
@@ -138,20 +140,12 @@ function CargoControl.onSaveRulesetBtn()
       name = nameBox.text,
       rules = {}
     }
-    local row, goodValue
     for i = 1, rowsActive - 1 do
-        row = rows[i]
-        if row.type.selectedIndex == 3 then
-            goodValue = row.dangerousGood.selectedValue
-        elseif row.type.selectedIndex == 4 then
-            goodValue = row.illegalGood.selectedValue
-        else
-            goodValue = row.good.selectedValue
-        end
+        local row = rows[i]
         set.rules[i] = {
           action = row.action.selectedIndex,
           type = row.type.selectedIndex,
-          good = goodValue
+          good = goodIndexByName[row.good.selectedEntry] or 0
         }
     end
     invokeServerFunction("saveRuleset", set)
@@ -194,38 +188,27 @@ function CargoControl.onRowTypeSelected(comboBox)
     local newType = row.type.selectedIndex
     if oldType == newType then return end
 
-    local goodValue
-    if oldType == 3 then
-        goodValue = row.dangerousGood.selectedValue
-    elseif oldType == 4 then
-        goodValue = row.illegalGood.selectedValue
-    else
-        goodValue = row.good.selectedValue
-    end
+    local goodsNames
     if newType == 3 then
-        row.dangerousGood:setSelectedValueNoCallback(goodValue)
-        if goodValue ~= row.dangerousGood.selectedValue then -- reset to 'all'
-            row.dangerousGood:setSelectedValueNoCallback(0)
-        end
-        row.good.visible = false
-        row.illegalGood.visible = false
-        row.dangerousGood.visible = true
+        goodsNames = goodsDangerous
     elseif newType == 4 then
-        row.illegalGood:setSelectedValueNoCallback(goodValue)
-        if goodValue ~= row.illegalGood.selectedValue then -- reset to 'all'
-            row.illegalGood:setSelectedValueNoCallback(0)
-        end
-        row.good.visible = false
-        row.dangerousGood.visible = false
-        row.illegalGood.visible = true
+        goodsNames = goodsIllegal
     elseif (oldType == 3 or oldType == 4) and newType ~= 3 and newType ~= 4 then
-        row.good:setSelectedValueNoCallback(goodValue)
-        if goodValue ~= row.good.selectedValue then -- reset to 'all'
-            row.good:setSelectedValueNoCallback(0)
+        goodsNames = goodsAll
+    end
+    if goodsNames then
+        local selectedEntry = row.good.selectedEntry
+        row.good:clear()
+        row.good:addEntry("All"%_t)
+        local newIndex = 0
+        for k, name in ipairs(goodsNames) do
+            if name == selectedEntry then
+                newIndex = k
+            end
+            row.good:addEntry(name)
         end
-        row.dangerousGood.visible = false
-        row.illegalGood.visible = false
-        row.good.visible = true
+        row.good:setSelectedIndexNoCallback(newIndex)
+        row.good.scrollPosition = newIndex
     end
 
     row.data.lastType = newType
@@ -257,20 +240,15 @@ function CargoControl.onRowEditBtn(button)
             row:setLast(false)
             row:hide()
         else -- shift rows one position up and hide the last row simulating deletion
-            local row, rowNext, curType
+            local row
             for i = pos, rowsActive - 1 do
                 row = rows[i]
-                rowNext = rows[i+1]
+                local rowNext = rows[i+1]
                 row.action.selectedIndex = rowNext.action.selectedIndex
-                curType = rowNext.type.selectedIndex 
-                row.type.selectedIndex = curType
-                if curType == 3 then
-                    row.dangerousGood.selectedIndex = rowNext.dangerousGood.selectedIndex
-                elseif curType == 4 then
-                    row.illegalGood.selectedIndex = rowNext.illegalGood.selectedIndex
-                else
-                    row.good.selectedIndex = rowNext.good.selectedIndex
-                end
+                row.type:setSelectedIndexNoCallback(rowNext.type.selectedIndex)
+                CargoControl.onRowTypeSelected(row.type) -- update goods list
+                row.good:setSelectedIndexNoCallback(rowNext.good.selectedIndex)
+                row.good.scrollPosition = rowNext.good.selectedIndex
             end
             row = rows[rowsActive - 1]
             row:setLast(true)
@@ -322,13 +300,8 @@ function UICollection.meta:show()
     if self.edit.caption == '+' then
         self.edit.visible = true
     else
-        local curType = self.type.selectedIndex
         for _, element in pairs(self) do
-            if (curType == 3 and element ~= self.good and element ~= self.illegalGood)
-              or (curType == 4 and element ~= self.good and element ~= self.dangerousGood)
-              or (curType ~= 3 and curType ~= 4 and element ~= self.dangerousGood and element ~= self.illegalGood) then
-                element.visible = true
-            end
+            element.visible = true
         end
     end
 end
@@ -346,33 +319,12 @@ function CargoControl.createRow()
     row.type:addEntry("Stolen"%_t)
     row.type:addEntry("Dangerous"%_t)
     row.type:addEntry("Illegal"%_t)
-
-    -- horrible workarounds to deal with UI bugs (x3 ComboBox)
-    row.good = frame:createValueComboBox(vSplit[3], "")
-    row.dangerousGood = frame:createValueComboBox(vSplit[3], "")
-    row.illegalGood = frame:createValueComboBox(vSplit[3], "")
-    row.good:addEntry(0, "All"%_t)
-    row.dangerousGood:addEntry(0, "All"%_t)
-    row.illegalGood:addEntry(0, "All"%_t)
+    --row.good = frame:createValueComboBox(vSplit[3], "")
+    row.good = frame:createComboBox(vSplit[3], "")
+    row.good:addEntry("All"%_t)
     for _, name in ipairs(goodsAll) do
-        row.good:addEntry(goodIndexByName[name], name)
+        row.good:addEntry(name)
     end
-    for _, name in ipairs(goodsDangerous) do
-        row.dangerousGood:addEntry(goodIndexByName[name], name)
-    end
-    for _, name in ipairs(goodsIllegal) do
-        row.illegalGood:addEntry(goodIndexByName[name], name)
-    end
-    --[[for k, good in ipairs(goodsArray) do
-        row.good:addEntry(k, good.name%_t)
-        if good.dangerous then
-            row.dangerousGood:addEntry(k, good.name%_t)
-        end
-        if good.illegal then
-            row.illegalGood:addEntry(k, good.name%_t)
-        end
-    end]]
-    --
     row.edit = frame:createButton(vSplit[4], "x", "onRowEditBtn")
     row.edit.textSize = 15
 
@@ -430,14 +382,34 @@ function CargoControl.receiveRulesets(data)
                 row:show()
                 rule = rules[i]
                 row.action.selectedIndex = rule.action
-                row.type.selectedIndex = rule.type
-                if rule.type == 3 then
-                    row.dangerousGood.selectedValue = rule.good
-                elseif rule.type == 4 then
-                    row.illegalGood.selectedValue = rule.good
-                else
-                    row.good.selectedValue = rule.good
+                row.type:setSelectedIndexNoCallback(rule.type)
+                CargoControl.onRowTypeSelected(row.type) -- update goods list
+
+                -- not very fast but will do
+                local newIndex = 0
+                if rule.good ~= 0 then
+                    local curType = row.type.selectedIndex
+                    local goodsNames
+                    if curType == 3 then
+                        goodsNames = goodsDangerous
+                    elseif curType == 4 then
+                        goodsNames = goodsIllegal
+                    else
+                        goodsNames = goodsAll
+                    end
+                    local goodTbl = goodsArray[rule.good]
+                    if goodTbl then
+                        local goodName = goodTbl.name%_t
+                        for k, name in ipairs(goodsNames) do
+                            if name == goodName then
+                                newIndex = k
+                                break
+                            end
+                        end
+                    end
                 end
+                row.good:setSelectedIndexNoCallback(newIndex)
+                row.good.scrollPosition = newIndex
             end
             row = rows[length + 1]
             row:setLast(true)
@@ -503,7 +475,7 @@ function CargoControl.sendRuleset()
         -- get data from current entity
         local status, entityData = entity:invokeFunction("data/scripts/entity/cargocontrol.lua", "getData", Config.MaxRowsPerRuleset, player.index)
         if status ~= 0 or not entityData then
-            Log.Error("sendRuleset - failed to get entity data: %i, %s", status, entityData)
+            Log:Error("sendRuleset - failed to get entity data: %i, %s", status, entityData)
             invokeClientFunction(player, "receiveRulesets")
         else
             invokeClientFunction(player, "receiveRulesets", entityData)
@@ -550,7 +522,7 @@ function CargoControl.saveRuleset(set)
         end
     end
     set.rules = newRules
-    Log.Debug("saveRuleset: %s", set.rules)
+    Log:Debug("saveRuleset: %s", set.rules)
 
     -- save to rulesets
     if not setIndex then -- new set
@@ -570,7 +542,7 @@ function CargoControl.saveRuleset(set)
 
     local status = entity:invokeFunction("data/scripts/entity/cargocontrol.lua", "setData", {current = set})
     if status ~= 0 then
-        Log.Error("saveRuleset - failed to set entity data: %i", status)
+        Log:Error("saveRuleset - failed to set entity data: %i", status)
     end
 end
 callable(CargoControl, "saveRuleset")
@@ -580,9 +552,9 @@ function CargoControl.forceRuleset()
     local entity = Player().craft
     if not entity.isShip and not entity.isStation then return end
 
-    local status = entity:invokeFunction("data/scripts/entity/cargocontrol.lua", "forceRuleset")
+    local status = entity:invokeFunction("data/scripts/entity/cargocontrol.lua", "forceRuleset", Player().index)
     if status ~= 0 then
-        Log.Error("forceRuleset - failed to apply entity ruleset: %i", status)
+        Log:Error("forceRuleset - failed to apply entity ruleset: %i", status)
     end
 end
 callable(CargoControl, "forceRuleset")
@@ -594,7 +566,7 @@ function CargoControl.setAuto(value)
 
     local status = entity:invokeFunction("data/scripts/entity/cargocontrol.lua", "setData", {auto = value and true or false})
     if status ~= 0 then
-        Log.Error("setAuto - failed to set entity data: %i", status)
+        Log:Error("setAuto - failed to set entity data: %i", status)
     end
 end
 callable(CargoControl, "setAuto")
@@ -625,7 +597,7 @@ function CargoControl.loadRuleset(name)
     local newEntityData = {auto = false, current = set}
     local status = entity:invokeFunction("data/scripts/entity/cargocontrol.lua", "setData", newEntityData)
     if status ~= 0 then
-        Log.Error("loadRuleset - failed to set entity data: %i", status)
+        Log:Error("loadRuleset - failed to set entity data: %i", status)
         return
     end
     invokeClientFunction(player, "receiveRulesets", newEntityData)

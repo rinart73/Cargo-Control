@@ -46,7 +46,9 @@ function CargoControl.onCargoLootCollected(collector, lootIndex, amount, good, o
                 entity:removeCargo(good, amount)
                 if row.action == 1 then
                     local dropPos = entity.translationf - entity.up * (entity.radius + entity:getBoostedValue(StatsBonuses.LootCollectionRange, 50)) -- radius + Loot collector range (500m by default?)
-                    Sector():dropCargo(dropPos, nil, nil, good, -1, amount)
+                    local cargo = Sector():dropCargo(dropPos, nil, nil, good, -1, amount)
+                    -- try to prevent good from being picked up for 120 seconds
+                    cargo.excludedPlayer = entity.factionIndex
                 end
                 break
             end
@@ -80,13 +82,13 @@ function CargoControl.setData(_data)
     end
 end
 
-function CargoControl.forceRuleset()
+function CargoControl.forceRuleset(playerIndex)
     local entity = Entity()
     if not entity:hasComponent(ComponentType.CargoBay) then return end
 
-    Player(callingPlayer):sendChatMessage("", ChatMessageType.Information, "Applying ruleset to currently stored goods."%_t)
+    Player(playerIndex):sendChatMessage("", ChatMessageType.Information, "Applying ruleset to currently stored goods."%_t)
     local cargos = {}
-    local goodInfo, nameTyped, infos
+    local infos
     --[[ cargos = {
       ['acid_0'] = {
         {good = UsualAcid, amount = 3},
@@ -99,12 +101,12 @@ function CargoControl.forceRuleset()
     -- sort entity cargo
     local goodTypes = {"suspicious", "stolen", "dangerous", "illegal"}
     for good, amount in pairs(entity:getCargos()) do
-        goodInfo = {
+        local goodInfo = {
           good = good,
           amount = amount
         }
         -- this good but any type
-        nameTyped = good.name..'_0'
+        local nameTyped = good.name..'_0'
         if not cargos[nameTyped] then cargos[nameTyped] = {} end
         infos = cargos[nameTyped]
         infos[#infos+1] = goodInfo
@@ -128,20 +130,20 @@ function CargoControl.forceRuleset()
     local entity = Entity()
     local dropPos = entity.translationf - entity.up * (entity.radius + entity:getBoostedValue(StatsBonuses.LootCollectionRange, 50)) -- radius + 500m
     local sector = Sector()
-    local good
     for _, row in ipairs(data.current.rules) do
         if row.good == 0 then
             infos = cargos['*_'..row.type]
         else
-            good = goodsArray[row.good]
-            infos = cargos[good.name..'_'..row.type]
+            infos = cargos[goodsArray[row.good].name..'_'..row.type]
         end
         if infos then
             for k, info in pairs(infos) do
                 if info.amount > 0 then
                     entity:removeCargo(info.good, info.amount)
                     if row.action == 1 then
-                        sector:dropCargo(dropPos, nil, nil, info.good, -1, info.amount)
+                        local cargo = sector:dropCargo(dropPos, nil, nil, info.good, -1, info.amount)
+                        -- try to prevent good from being picked up for 120 seconds
+                        cargo.excludedPlayer = entity.factionIndex
                     end
                     info.amount = 0
                 end
