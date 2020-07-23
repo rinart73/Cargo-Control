@@ -11,7 +11,7 @@ local UTF8 = include("azimuthlib-utf8")
 CargoControl = {}
 
 
-local tab, nameBox, autoCheckBox, frame, lister, rows, loadWindow, rulesetsListBox -- client UI
+local tab, nameBox, autoCheckBox, cycleCheckBox, frame, lister, rows, loadWindow, rulesetsListBox -- client UI
 local ServerConfig, rowByEditBtn, rowByTypeBox, rowsActive, rulesets, goodIndexByName, goodsAll, goodsDangerous, goodsIllegal -- client
 local Log, Config, data, rulesetByName -- server
 
@@ -56,8 +56,8 @@ function CargoControl.initialize()
     tab = ShipWindow():createTab("Cargo Control"%_t, "data/textures/icons/cubes.png", "Cargo Control"%_t)
     tab.onShowFunction = "onShowTab"
     
-    local hSplit = UIHorizontalProportionalSplitter(Rect(tab.size), 10, 0, {30, 0.5})
-    local vSplit = UIVerticalProportionalSplitter(hSplit[1], 10, 0, {0.72, 0.48, 0.48, 0.48, 0.48, 0.4, 10, 30})
+    local hSplit = UIHorizontalProportionalSplitter(Rect(tab.size), 10, 0, {30, 20, 0.5})
+    local vSplit = UIVerticalProportionalSplitter(hSplit[1], 10, 0, {0.8, 0.56, 0.56, 0.56, 0.56, 10, 30})
     nameBox = tab:createTextBox(vSplit[1], "")
     nameBox.maxCharacters = 40
     local saveBtn = tab:createButton(vSplit[2], "Save"%_t, "onSaveRulesetBtn")
@@ -69,18 +69,23 @@ function CargoControl.initialize()
     local forceBtn = tab:createButton(vSplit[5], "Force"%_t, "onForceRulesetBtn")
     forceBtn.maxTextSize = 16
     forceBtn.tooltip = [[Apply this ruleset to goods that are currently stored in the cargo bay.]]%_t
-    local rect = vSplit[6]
-    autoCheckBox = tab:createCheckBox(Rect(rect.lower + vec2(0, 5), rect.upper), "Auto"%_t, "onAutoBoxChecked")
-    autoCheckBox.captionLeft = false
-    autoCheckBox.tooltip = [[Automatically apply this ruleset when picking up goods.]]%_t
-    autoCheckBox:setCheckedNoCallback(true)
-    local tooltipFrame = tab:createFrame(vSplit[8])
-    rect = vSplit[8]
+    local tooltipFrame = tab:createFrame(vSplit[7])
+    rect = vSplit[7]
     local helpLabel = tab:createLabel(Rect(rect.lower + vec2(0, 5), rect.upper), "?", 16)
     helpLabel.centered = true
     helpLabel.tooltip = [[This tab allows to create sets of rules that will determine what to do with cargo once it's picked up.]]%_t
 
-    frame = tab:createScrollFrame(hSplit[2])
+    local vSplit = UIVerticalProportionalSplitter(hSplit[2], 10, 0, {0.17, 0.08, 0.05})
+    local rect = vSplit[2]
+    cycleCheckBox = tab:createCheckBox(rect, "Apply every minute"%_t, "onCycleBoxChecked")
+    cycleCheckBox.captionLeft = false
+    cycleCheckBox.tooltip = [[Automatically apply this ruleset every minute (good for stations that produce waste).]]%_t
+    local rect = vSplit[3]
+    autoCheckBox = tab:createCheckBox(rect, "Filter loot"%_t, "onAutoBoxChecked")
+    autoCheckBox.captionLeft = false
+    autoCheckBox.tooltip = [[Automatically apply this ruleset when picking up goods.]]%_t
+
+    frame = tab:createScrollFrame(hSplit[3])
     frame.scrollSpeed = 40
     lister = UIVerticalLister(Rect(frame.size), 10, 10)
     lister.marginRight = 30
@@ -178,7 +183,13 @@ end
 function CargoControl.onAutoBoxChecked(checkBox, value)
     loadWindow.visible = false
 
-    invokeServerFunction("setAuto", value)
+    invokeServerFunction("setVariable", "auto", value)
+end
+
+function CargoControl.onCycleBoxChecked(checkBox, value)
+    loadWindow.visible = false
+
+    invokeServerFunction("setVariable", "cycle", value)
 end
 
 function CargoControl.onRowTypeSelected(comboBox)
@@ -358,13 +369,14 @@ function CargoControl.receiveSettings(serverConfig, rulesetNames)
     end
 end
 
-function CargoControl.receiveRulesets(data)
+function CargoControl.receiveRulesets(data, isLoaded)
     CargoControl.onClearRulesetBtn()
     if data then
-        autoCheckBox:setCheckedNoCallback(data.auto)
-        if data.current.name then
-            nameBox.text = data.current.name
+        if not isLoaded then
+            autoCheckBox:setCheckedNoCallback(data.auto)
+            cycleCheckBox:setCheckedNoCallback(data.cycle)
         end
+        nameBox.text = data.current.name or ""
         if data.current.rules then
             -- create new rows
             local length = #data.current.rules
@@ -559,17 +571,18 @@ function CargoControl.forceRuleset()
 end
 callable(CargoControl, "forceRuleset")
 
-function CargoControl.setAuto(value)
+function CargoControl.setVariable(key, value)
     if not CargoControl.interactionPossible() then return end
     local entity = Player().craft
     if not entity.isShip and not entity.isStation then return end
+    if key ~= "auto" and key ~= "cycle" then return end
 
-    local status = entity:invokeFunction("data/scripts/entity/cargocontrol.lua", "setData", {auto = value and true or false})
+    local status = entity:invokeFunction("data/scripts/entity/cargocontrol.lua", "setData", {[key] = value and true or false})
     if status ~= 0 then
-        Log:Error("setAuto - failed to set entity data: %i", status)
+        Log:Error("setVariable - failed to set entity data: %i", status)
     end
 end
-callable(CargoControl, "setAuto")
+callable(CargoControl, "setVariable")
 
 function CargoControl.loadRuleset(name)
     if not CargoControl.interactionPossible() then return end
@@ -594,13 +607,13 @@ function CargoControl.loadRuleset(name)
             Azimuth.saveConfig("Rulesets_"..player.index, data, nil, false, "CargoControl", true)
         end
     end
-    local newEntityData = {auto = false, current = set}
+    local newEntityData = {current = set}
     local status = entity:invokeFunction("data/scripts/entity/cargocontrol.lua", "setData", newEntityData)
     if status ~= 0 then
         Log:Error("loadRuleset - failed to set entity data: %i", status)
         return
     end
-    invokeClientFunction(player, "receiveRulesets", newEntityData)
+    invokeClientFunction(player, "receiveRulesets", newEntityData, true)
 end
 callable(CargoControl, "loadRuleset")
 

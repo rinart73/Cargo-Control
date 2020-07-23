@@ -11,7 +11,7 @@ local data, goodIndexByName -- server
 if onServer() then
 
 
-data = { current = {}, auto = false }
+data = { current = {}, auto = false, cycle = false }
 
 -- PREDEFINED --
 
@@ -22,6 +22,16 @@ function CargoControl.initialize()
     end
 
     Entity():registerCallback("onCargoLootCollected", "onCargoLootCollected")
+end
+
+function CargoControl.getUpdateInterval()
+    return 60
+end
+
+function CargoControl.update()
+    if data.cycle and data.current.rules and #data.current.rules > 0 then
+        CargoControl.forceRuleset()
+    end
 end
 
 function CargoControl.secure()
@@ -42,13 +52,8 @@ function CargoControl.onCargoLootCollected(collector, lootIndex, amount, good, o
         local goodIndex = goodIndexByName[good.name]
         for _, row in ipairs(data.current.rules) do
             if (row.type == 0 or good[goodTypes[row.type]]) and (row.good == 0 or row.good == goodIndex) then
-                local entity = Entity()
-                entity:removeCargo(good, amount)
-                if row.action == 1 then
-                    local dropPos = entity.translationf - entity.up * (entity.radius + entity:getBoostedValue(StatsBonuses.LootCollectionRange, 50)) -- radius + Loot collector range (500m by default?)
-                    local cargo = Sector():dropCargo(dropPos, nil, nil, good, -1, amount)
-                    -- try to prevent good from being picked up for 120 seconds
-                    cargo.excludedPlayer = entity.factionIndex
+                if not deferredCallback(0.10, "deferredRemoveCargo", good, amount, row.action == 1) then
+                    eprint("[ERROR][CargoControl]: Failed to remove unwanted cargo")
                 end
                 break
             end
@@ -57,6 +62,19 @@ function CargoControl.onCargoLootCollected(collector, lootIndex, amount, good, o
 end
 
 -- FUNCTIONS --
+
+function CargoControl.deferredRemoveCargo(good, amount, doDrop)
+    local entity = Entity()
+    if entity:getCargoAmount(good) >= amount then
+        entity:removeCargo(good, amount)
+        if doDrop then
+            local dropPos = entity.translationf - entity.up * (entity.radius + entity:getBoostedValue(StatsBonuses.LootCollectionRange, 50)) -- radius + Loot collector range (500m by default?)
+            local cargo = Sector():dropCargo(dropPos, nil, nil, good, -1, amount)
+            -- try to prevent good from being picked up for 120 seconds
+            cargo.excludedPlayer = entity.factionIndex
+        end
+    end
+end
 
 function CargoControl.getData(maxRows, playerIndex)
     if maxRows and data.current.rules then
@@ -86,7 +104,9 @@ function CargoControl.forceRuleset(playerIndex)
     local entity = Entity()
     if not entity:hasComponent(ComponentType.CargoBay) then return end
 
-    Player(playerIndex):sendChatMessage("", ChatMessageType.Information, "Applying ruleset to currently stored goods."%_t)
+    if playerIndex then
+        Player(playerIndex):sendChatMessage("", ChatMessageType.Information, "Applying ruleset to currently stored goods."%_t)
+    end
     local cargos = {}
     local infos
     --[[ cargos = {
